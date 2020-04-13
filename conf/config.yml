@@ -3,4 +3,4 @@
 # Copyright (C) 2019 Intel Corporation
 # SPDX-License-Identifier: BSD-3-Clause
 
-kernel_arguments: username=novaadmin password=NOVA2020! kernparam=auto:true url=http://@@RNI_IP@@/profile/@@PROFILE_NAME@@/NOVA-Preseed.cfg
+kernel_arguments: username=novaadmin password=NOVA2020! kernparam=[auto:true url=http://@@RNI_IP@@/profile/@@PROFILE_NAME@@/NOVA-Preseed.cfg]
