@@ -3,4 +3,4 @@
 # Copyright (C) 2019 Intel Corporation
 # SPDX-License-Identifier: BSD-3-Clause
 
-kernel_arguments: preseed/url=http://10.0.1.210:8080/preseed.cfg preseed/url/checksum=119cfdb7c85ec349ebb6f36c181a094e
+kernel_arguments: auto=true url=http://10.0.1.210:8080/preseed.cfg url/checksum=119cfdb7c85ec349ebb6f36c181a094e
