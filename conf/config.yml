@@ -3,4 +3,4 @@
 # Copyright (C) 2019 Intel Corporation
 # SPDX-License-Identifier: BSD-3-Clause
 
-kernel_arguments: auto=true url=http://10.0.1.210:8080/preseed.cfg url/checksum=49e793b5313d3e0096c45a656a8b47bb hostname=mca30 domain=wachterlab.com
+kernel_arguments: auto=true url=http://10.0.1.210:8080/preseed.cfg url/checksum=4c0b277627d88a969fc2a56f8561fbc4 hostname=mca30 domain=wachterlab.com
