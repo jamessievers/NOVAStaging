@@ -467,14 +467,14 @@ if [ ! -z "${param_insecurereg}" ]; then
 fi
 
 # --- Create system-docker database on $ROOTFS ---
-run "Preparing system-docker database" \
-    "mkdir -p $ROOTFS/var/lib/docker && \
-    docker run -d --privileged --name system-docker ${DOCKER_PROXY_ENV} -v $ROOTFS/var/lib/docker:/var/lib/docker docker:stable-dind ${REGISTRY_MIRROR}" \
-    "$TMP/provisioning.log"
+#run "Preparing system-docker database" \
+#    "mkdir -p $ROOTFS/var/lib/docker && \
+#    docker run -d --privileged --name system-docker ${DOCKER_PROXY_ENV} -v $ROOTFS/var/lib/docker:/var/lib/docker docker:stable-dind ${REGISTRY_MIRROR}" \
+#    "$TMP/provisioning.log"
 
 # --- Installing docker compose ---
-run "Installing Docker Compose" \
-    "mkdir -p $ROOTFS/usr/local/bin/ && \
-    wget -O $ROOTFS/usr/local/bin/docker-compose \"https://github.com/docker/compose/releases/download/1.25.4/docker-compose-$(uname -s)-$(uname -m)\" && \
-    chmod a+x $ROOTFS/usr/local/bin/docker-compose" \
+#run "Installing Docker Compose" \
+#    "mkdir -p $ROOTFS/usr/local/bin/ && \
+#    wget -O $ROOTFS/usr/local/bin/docker-compose \"https://github.com/docker/compose/releases/download/1.25.4/docker-compose-$(uname -s)-$(uname -m)\" && \
+#    chmod a+x $ROOTFS/usr/local/bin/docker-compose" \
     "$TMP/provisioning.log"
