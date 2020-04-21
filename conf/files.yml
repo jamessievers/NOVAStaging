@@ -4,9 +4,9 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 base_os_files:
-  - url: http://archive.ubuntu.com/ubuntu/dists/xenial-updates/main/installer-amd64/current/images/hwe-netboot/xen/vmlinuz
+  - url: http://archive.ubuntu.com/ubuntu/dists/bionic-updates/main/installer-amd64/current/images/hwe-netboot/xen/vmlinuz
     filename: vmlinuz
     type: kernel
-  - url: http://archive.ubuntu.com/ubuntu/dists/xenial-updates/main/installer-amd64/current/images/hwe-netboot/xen/initrd.gz
+  - url: http://archive.ubuntu.com/ubuntu/dists/bionic-updates/main/installer-amd64/current/images/hwe-netboot/xen/initrd.gz
     filename: initrd
     type: initrd
