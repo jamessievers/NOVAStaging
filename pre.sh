@@ -9,8 +9,8 @@ set -a
 source /opt/bootstrap/functions
 
 # --- Ubuntu Packages ---
-ubuntu_packages="net-tools"
-ubuntu_bundles="standard"
+ubuntu_packages="" # net-tools
+ubuntu_tasksel="" # standard
 
 PROVISION_LOG="/tmp/provisioning.log"
 run "Begin provisioning process..." \
@@ -181,41 +181,20 @@ export freemem=$(grep MemTotal /proc/meminfo | awk '{print $2}')
 
 # --- Detect HDD ---
 if [ -d /sys/block/nvme[0-9]n[0-9] ]; then
-	export DRIVE=$(echo /dev/$(ls -l /sys/block/nvme* | grep -v usb | head -n1 | sed 's/^.*\(nvme[a-z0-1]\+\).*$/\1/'))
-	if [[ $param_parttype == 'efi' ]]; then
-		export EFI_PARTITION=${DRIVE}p1
-		export BOOT_PARTITION=${DRIVE}p2
-		export SWAP_PARTITION=${DRIVE}p3
-		export ROOT_PARTITION=${DRIVE}p4
-	else
-		export BOOT_PARTITION=${DRIVE}p1
-		export SWAP_PARTITION=${DRIVE}p2
-		export ROOT_PARTITION=${DRIVE}p3
-	fi
+	export DRIVE=$(echo /dev/`ls -l /sys/block/nvme* | grep -v usb | head -n1 | sed 's/^.*\(nvme[a-z0-1]\+\).*$/\1/'`);
+	export BOOT_PARTITION=${DRIVE}p1
+	export SWAP_PARTITION=${DRIVE}p2
+	export ROOT_PARTITION=${DRIVE}p3
 elif [ -d /sys/block/[vsh]da ]; then
-	export DRIVE=$(echo /dev/$(ls -l /sys/block/[vsh]da | grep -v usb | head -n1 | sed 's/^.*\([vsh]d[a-z]\+\).*$/\1/'))
-	if [[ $param_parttype == 'efi' ]]; then
-		export EFI_PARTITION=${DRIVE}1
-		export BOOT_PARTITION=${DRIVE}2
-		export SWAP_PARTITION=${DRIVE}3
-		export ROOT_PARTITION=${DRIVE}4
-	else
-		export BOOT_PARTITION=${DRIVE}1
-		export SWAP_PARTITION=${DRIVE}2
-		export ROOT_PARTITION=${DRIVE}3
-	fi
+	export DRIVE=$(echo /dev/`ls -l /sys/block/[vsh]da | grep -v usb | head -n1 | sed 's/^.*\([vsh]d[a-z]\+\).*$/\1/'`);
+	export BOOT_PARTITION=${DRIVE}1
+	export SWAP_PARTITION=${DRIVE}2
+	export ROOT_PARTITION=${DRIVE}3
 elif [ -d /sys/block/mmcblk[0-9] ]; then
-	export DRIVE=$(echo /dev/$(ls -l /sys/block/mmcblk[0-9] | grep -v usb | head -n1 | sed 's/^.*\(mmcblk[0-9]\+\).*$/\1/'))
-	if [[ $param_parttype == 'efi' ]]; then
-		export EFI_PARTITION=${DRIVE}p1
-		export BOOT_PARTITION=${DRIVE}p2
-		export SWAP_PARTITION=${DRIVE}p3
-		export ROOT_PARTITION=${DRIVE}p4
-	else
-		export BOOT_PARTITION=${DRIVE}p1
-		export SWAP_PARTITION=${DRIVE}p2
-		export ROOT_PARTITION=${DRIVE}p3
-	fi
+	export DRIVE=$(echo /dev/`ls -l /sys/block/mmcblk[0-9] | grep -v usb | head -n1 | sed 's/^.*\(mmcblk[0-9]\+\).*$/\1/'`);
+	export BOOT_PARTITION=${DRIVE}p1
+	export SWAP_PARTITION=${DRIVE}p2
+	export ROOT_PARTITION=${DRIVE}p3
 else
 	echo "No supported drives found!" 2>&1 | tee -a /dev/console
 	sleep 300
@@ -238,11 +217,10 @@ run "Partitioning drive ${DRIVE}" \
     "if [[ $param_parttype == 'efi' ]]; then
         parted --script ${DRIVE} \
         mklabel gpt \
-        mkpart ESP fat32 1MiB 256MiB \
+        mkpart ESP fat32 1MiB 551MiB \
         set 1 esp on \
-        mkpart primary ext4 256MiB 807MiB \
-        mkpart primary linux-swap 807MiB 1831MiB \
-        mkpart primary 1831MiB 100%;
+        mkpart primary linux-swap 551MiB 1575MiB \
+        mkpart primary 1575MiB 100%;
     else
         parted --script ${DRIVE} \
         mklabel msdos \
@@ -254,20 +232,18 @@ run "Partitioning drive ${DRIVE}" \
     ${PROVISION_LOG}
 
 # --- Create file systems ---
-run "Creating boot partition on drive ${DRIVE}" \
-    "mkfs -t ext4 -L BOOT -F ${BOOT_PARTITION} && \
-    e2label ${BOOT_PARTITION} BOOT && \
-    mkdir -p $BOOTFS && \
-    mount ${BOOT_PARTITION} $BOOTFS" \
-    ${PROVISION_LOG}
-
 if [[ $param_parttype == 'efi' ]]; then
-    export EFIFS=$BOOTFS/efi
-    mkdir -p $EFIFS
-    run "Creating efi boot partition on drive ${DRIVE}" \
-        "mkfs -t vfat -n BOOT ${EFI_PARTITION} && \
-        mkdir -p $EFIFS && \
-        mount ${EFI_PARTITION} $EFIFS" \
+    run "Creating boot partition on drive ${DRIVE}" \
+        "mkfs -t vfat -n BOOT ${BOOT_PARTITION} && \
+        mkdir -p $BOOTFS && \
+        mount ${BOOT_PARTITION} $BOOTFS" \
+        ${PROVISION_LOG}
+else
+    run "Creating boot partition on drive ${DRIVE}" \
+        "mkfs -t ext4 -L BOOT -F ${BOOT_PARTITION} && \
+        e2label ${BOOT_PARTITION} BOOT && \
+        mkdir -p $BOOTFS && \
+        mount ${BOOT_PARTITION} $BOOTFS" \
         ${PROVISION_LOG}
 fi
 
@@ -321,6 +297,11 @@ run "Preparing Ubuntu ${param_ubuntuversion} installer" \
     "docker pull ubuntu:${param_ubuntuversion}" \
     "$TMP/provisioning.log"
 
+
+rootfs_partuuid=$(lsblk -no UUID ${ROOT_PARTITION})
+bootfs_partuuid=$(lsblk -no UUID ${BOOT_PARTITION})
+swapfs_partuuid=$(lsblk -no UUID ${SWAP_PARTITION})
+
 if [[ $param_parttype == 'efi' ]]; then
     run "Installing Ubuntu ${param_ubuntuversion} (~10 min)" \
         "docker run -i --rm --privileged --name ubuntu-installer ${DOCKER_PROXY_ENV} -v /dev:/dev -v /sys/:/sys/ -v $ROOTFS:/target/root ubuntu:${param_ubuntuversion} sh -c \
@@ -334,8 +315,8 @@ if [[ $param_parttype == 'efi' ]]; then
             \"$(echo ${INLINE_PROXY} | sed "s#'#\\\\\"#g") export TERM=xterm-color && \
             export DEBIAN_FRONTEND=noninteractive && \
             chmod a+rw /dev/null /dev/zero && \
-            mount ${BOOT_PARTITION} /boot && \
-            mount ${EFI_PARTITION} /boot/efi && \
+            mkdir -p /boot/efi && \
+            mount ${BOOT_PARTITION} /boot/efi && \
             echo \\\"deb http://archive.ubuntu.com/ubuntu ${param_ubuntuversion} main multiverse universe restricted\\\" >> /etc/apt/sources.list  && \
             echo \\\"deb-src http://archive.ubuntu.com/ubuntu ${param_ubuntuversion} main multiverse universe restricted\\\" >> /etc/apt/sources.list  && \
             echo \\\"deb http://archive.ubuntu.com/ubuntu ${param_ubuntuversion}-security main multiverse universe restricted\\\" >> /etc/apt/sources.list  && \
@@ -343,28 +324,31 @@ if [[ $param_parttype == 'efi' ]]; then
             apt update && \
             apt install -y wget linux-image-generic && \
             apt install -y grub-efi shim && \
-            \\\$(grub-install ${EFI_PARTITION} --target=x86_64-efi --efi-directory=/boot/efi --bootloader=ubuntu; exit 0) && \
-            echo \\\"search.fs_uuid $(lsblk -no UUID ${BOOT_PARTITION}) root\nset prefix=(\\\\\\\$root)\\\\\\\"/grub\\\\\\\"\nconfigfile \\\\\\\$prefix/grub.cfg\\\" > /boot/efi/EFI/ubuntu/grub.cfg && \
+            \\\$(grub-install ${BOOT_PARTITION} --target=x86_64-efi --efi-directory=/boot/efi --bootloader=ubuntu; exit 0) && \
             update-grub && \
             adduser --quiet --disabled-password --shell /bin/bash --gecos \\\"\\\" ${param_username} && \
             addgroup --system admin && \
             echo \\\"${param_username}:${param_password}\\\" | chpasswd && \
             usermod -a -G admin ${param_username} && \
-            apt install -y tasksel && \
-            tasksel install ${ubuntu_bundles} && \
-            apt install -y ${ubuntu_packages} && \
+            if [ \\\"${ubuntu_tasksel}\\\" != "" ]; then \
+                apt install -y tasksel && \
+                tasksel install ${ubuntu_tasksel}; \
+            fi && \
+            if [ \\\"${ubuntu_packages}\\\" != "" ]; then apt install -y ${ubuntu_packages}; fi && \
             apt clean\"' && \
-        wget --header \"Authorization: token ${param_token}\" -O - ${param_basebranch}/files/etc/fstab | sed -e \"s#ROOT#${ROOT_PARTITION}#g\" | sed -e \"s#BOOT#${BOOT_PARTITION}#g\" | sed -e \"s#SWAP#${SWAP_PARTITION}#g\" > $ROOTFS/etc/fstab && \
-        echo \"${EFI_PARTITION}  /boot/efi       vfat    umask=0077      0       1\" >> $ROOTFS/etc/fstab" \
+        wget --header \"Authorization: token ${param_token}\" -O - ${param_basebranch}/files/etc/fstab | sed -e \"s#ROOT#UUID=${rootfs_partuuid}#g\" | sed -e \"s#BOOT#UUID=${bootfs_partuuid}#g\" | sed -e \"s#SWAP#UUID=${swapfs_partuuid}#g\" > $ROOTFS/etc/fstab" \
         "$TMP/provisioning.log"
 
-        export MOUNT_DURING_INSTALL="chmod a+rw /dev/null /dev/zero && mount ${BOOT_PARTITION} /boot && mount ${EFI_PARTITION} /boot/efi"
+        #   && \
+        # echo \"${EFI_PARTITION}  /boot/efi       vfat    umask=0077      0       1\" >> $ROOTFS/etc/fstab
+
+    export MOUNT_DURING_INSTALL="chmod a+rw /dev/null /dev/zero && mount ${BOOT_PARTITION} /boot/efi"
 else
     run "Installing Ubuntu ${param_ubuntuversion} (~10 min)" \
         "docker run -i --rm --privileged --name ubuntu-installer ${DOCKER_PROXY_ENV} -v /dev:/dev -v /sys/:/sys/ -v $ROOTFS:/target/root ubuntu:${param_ubuntuversion} sh -c \
         'apt update && \
         apt install -y debootstrap && \
-        debootstrap --arch ${param_arch} ${param_ubuntuversion} /target/root && \
+        debootstrap --arch ${param_arch} ${param_ubuntuversion} /target/root ${param_mirror} && \
         mount --bind dev /target/root/dev && \
         mount -t proc proc /target/root/proc && \
         mount -t sysfs sysfs /target/root/sys && \
@@ -385,14 +369,16 @@ else
             addgroup --system admin && \
             echo \\\"${param_username}:${param_password}\\\" | chpasswd && \
             usermod -a -G admin ${param_username} && \
-            apt install -y tasksel && \
-            tasksel install ${ubuntu_bundles} && \
-            apt install -y ${ubuntu_packages} && \
+            if [ \\\"${ubuntu_tasksel}\\\" != "" ]; then \
+                apt install -y tasksel && \
+                tasksel install ${ubuntu_tasksel}; \
+            fi && \
+            if [ \\\"${ubuntu_packages}\\\" != "" ]; then apt install -y ${ubuntu_packages}; fi && \
             apt clean\"' && \
-        wget --header \"Authorization: token ${param_token}\" -O - ${param_basebranch}/files/etc/fstab | sed -e \"s#ROOT#${ROOT_PARTITION}#g\" | sed -e \"s#BOOT#${BOOT_PARTITION}#g\" | sed -e \"s#SWAP#${SWAP_PARTITION}#g\" > $ROOTFS/etc/fstab" \
+        wget --header \"Authorization: token ${param_token}\" -O - ${param_basebranch}/files/etc/fstab | sed -e \"s#ROOT#UUID=${rootfs_partuuid}#g\" | sed -e \"s#BOOT#UUID=${bootfs_partuuid}#g\" | sed -e \"s#SWAP#UUID=${swapfs_partuuid}#g\" > $ROOTFS/etc/fstab" \
         "$TMP/provisioning.log"
 
-        export MOUNT_DURING_INSTALL="chmod a+rw /dev/null /dev/zero && mount ${BOOT_PARTITION} /boot"
+    export MOUNT_DURING_INSTALL="chmod a+rw /dev/null /dev/zero && mount ${BOOT_PARTITION} /boot"
 fi
 
 # --- Enabling Ubuntu boostrap items ---
@@ -407,13 +393,14 @@ run "Enabling Ubuntu boostrap items" \
     sed -i 's#^GRUB_CMDLINE_LINUX_DEFAULT=\"quiet splash\"#GRUB_CMDLINE_LINUX_DEFAULT=\"kvmgt vfio-iommu-type1 vfio-mdev i915.enable_gvt=1 kvm.ignore_msrs=1 intel_iommu=on drm.debug=0\"#' $ROOTFS/etc/default/grub && \
     echo \"${HOSTNAME}\" > $ROOTFS/etc/hostname && \
     echo \"LANG=en_US.UTF-8\" >> $ROOTFS/etc/default/locale && \
-    docker run -i --rm --privileged --name ubuntu-installer ${DOCKER_PROXY_ENV} -v /dev:/dev -v /sys/:/sys/ -v $ROOTFS:/target/root -v $BOOTFS:/target/root/boot ubuntu:${param_ubuntuversion} sh -c \
+    docker run -i --rm --privileged --name ubuntu-installer ${DOCKER_PROXY_ENV} -v /dev:/dev -v /sys/:/sys/ -v $ROOTFS:/target/root ubuntu:${param_ubuntuversion} sh -c \
         'mount --bind dev /target/root/dev && \
         mount -t proc proc /target/root/proc && \
         mount -t sysfs sysfs /target/root/sys && \
         LANG=C.UTF-8 chroot /target/root sh -c \
         \"$(echo ${INLINE_PROXY} | sed "s#'#\\\\\"#g") export TERM=xterm-color && \
         export DEBIAN_FRONTEND=noninteractive && \
+        ${MOUNT_DURING_INSTALL} && \
         systemctl enable systemd-networkd && \
         update-grub && \
         locale-gen --purge en_US.UTF-8 && \
@@ -466,42 +453,43 @@ if [ ! -z "${param_proxysocks}" ]; then
         "$TMP/provisioning.log"
 fi
 
---- Install Extra Packages ---
-run "Installing Docker on Ubuntu ${param_ubuntuversion}" \
-    "docker run -i --rm --privileged --name ubuntu-installer ${DOCKER_PROXY_ENV} -v /dev:/dev -v /sys/:/sys/ -v $ROOTFS:/target/root ubuntu:${param_ubuntuversion} sh -c \
-    'mount --bind dev /target/root/dev && \
-    mount -t proc proc /target/root/proc && \
-    mount -t sysfs sysfs /target/root/sys && \
-    LANG=C.UTF-8 chroot /target/root sh -c \
-        \"$(echo ${INLINE_PROXY} | sed "s#'#\\\\\"#g") export TERM=xterm-color && \
-        export DEBIAN_FRONTEND=noninteractive && \
-        apt install -y \
-        apt-transport-https \
-        ca-certificates \
-        curl \
-        gnupg-agent \
-        software-properties-common && \
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add - && \
-        apt-key fingerprint 0EBFCD88 && \
-        sudo add-apt-repository \\\"deb [arch=amd64] https://download.docker.com/linux/ubuntu ${DOCKER_UBUNTU_RELEASE} stable\\\" && \
-        apt-get update && \
-        apt-get install -y docker-ce docker-ce-cli containerd.io\"'" \
-    "$TMP/provisioning.log"
+# --- Install Extra Packages ---
+# run "Installing Docker on Ubuntu ${param_ubuntuversion}" \
+#     "docker run -i --rm --privileged --name ubuntu-installer ${DOCKER_PROXY_ENV} -v /dev:/dev -v /sys/:/sys/ -v $ROOTFS:/target/root ubuntu:${param_ubuntuversion} sh -c \
+#     'mount --bind dev /target/root/dev && \
+#     mount -t proc proc /target/root/proc && \
+#     mount -t sysfs sysfs /target/root/sys && \
+#     LANG=C.UTF-8 chroot /target/root sh -c \
+#         \"$(echo ${INLINE_PROXY} | sed "s#'#\\\\\"#g") export TERM=xterm-color && \
+#         export DEBIAN_FRONTEND=noninteractive && \
+#         ${MOUNT_DURING_INSTALL} && \
+#         apt install -y \
+#         apt-transport-https \
+#         ca-certificates \
+#         curl \
+#         gnupg-agent \
+#         software-properties-common && \
+#         curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add - && \
+#         apt-key fingerprint 0EBFCD88 && \
+#         sudo add-apt-repository \\\"deb [arch=amd64] https://download.docker.com/linux/ubuntu ${DOCKER_UBUNTU_RELEASE} stable\\\" && \
+#         apt-get update && \
+#         apt-get install -y docker-ce docker-ce-cli containerd.io\"'" \
+#     "$TMP/provisioning.log"
 
-if [ ! -z "${param_insecurereg}" ]; then
-    mkdir -p $ROOTFS/etc/docker &&
-    echo "{\"insecure-registries\": [\"${param_insecurereg}\"]}" >$ROOTFS/etc/docker/daemon.json
-fi
+# if [ ! -z "${param_insecurereg}" ]; then
+#     mkdir -p $ROOTFS/etc/docker &&
+#     echo "{\"insecure-registries\": [\"${param_insecurereg}\"]}" >$ROOTFS/etc/docker/daemon.json
+# fi
 
-# --- Create system-docker database on $ROOTFS ---
-run "Preparing system-docker database" \
-    "mkdir -p $ROOTFS/var/lib/docker && \
-    docker run -d --privileged --name system-docker ${DOCKER_PROXY_ENV} -v $ROOTFS/var/lib/docker:/var/lib/docker docker:stable-dind ${REGISTRY_MIRROR}" \
-    "$TMP/provisioning.log"
+# # --- Create system-docker database on $ROOTFS ---
+# run "Preparing system-docker database" \
+#     "mkdir -p $ROOTFS/var/lib/docker && \
+#     docker run -d --privileged --name system-docker ${DOCKER_PROXY_ENV} -v $ROOTFS/var/lib/docker:/var/lib/docker docker:stable-dind ${REGISTRY_MIRROR}" \
+#     "$TMP/provisioning.log"
 
-# --- Installing docker compose ---
-run "Installing Docker Compose" \
-    "mkdir -p $ROOTFS/usr/local/bin/ && \
-    wget -O $ROOTFS/usr/local/bin/docker-compose \"https://github.com/docker/compose/releases/download/1.25.4/docker-compose-$(uname -s)-$(uname -m)\" && \
-    chmod a+x $ROOTFS/usr/local/bin/docker-compose" \
-    "$TMP/provisioning.log"
+# # --- Installing docker compose ---
+# run "Installing Docker Compose" \
+#     "mkdir -p $ROOTFS/usr/local/bin/ && \
+#     wget -O $ROOTFS/usr/local/bin/docker-compose \"https://github.com/docker/compose/releases/download/1.25.4/docker-compose-$(uname -s)-$(uname -m)\" && \
+#     chmod a+x $ROOTFS/usr/local/bin/docker-compose" \
+#     "$TMP/provisioning.log"
