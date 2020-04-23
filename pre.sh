@@ -9,7 +9,7 @@ set -a
 source /opt/bootstrap/functions
 
 # --- Ubuntu Packages ---
-ubuntu_packages="" # net-tools
+ubuntu_packages="net-tools"
 ubuntu_tasksel="" # standard
 
 PROVISION_LOG="/tmp/provisioning.log"
@@ -172,8 +172,13 @@ fi
 if [[ $kernel_params == *"mirror="* ]]; then
 	tmp="${kernel_params##*mirror=}"
 	export param_mirror="${tmp%% *}"
+    export UBUNTU_MIRROR=${param_mirror}
 elif [ $(wget http://${PROVISIONER}${param_httppath}/distro/ -O-) ] 2>/dev/null; then
     export param_mirror="http://${PROVISIONER}${param_httppath}/distro/"
+    export UBUNTU_MIRROR="http://archive.ubuntu.com/ubuntu"
+else
+    export param_mirror="http://archive.ubuntu.com/ubuntu"
+    export UBUNTU_MIRROR=${param_mirror}
 fi
 
 # --- Get free memory
@@ -270,11 +275,11 @@ fi
 if [ $freemem -lt 6291456 ]; then
     mkdir -p $ROOTFS/tmp
     export TMP=$ROOTFS/tmp
-    export PROVISION_LOG="$TMP/provisioning.log"
 else
     mkdir -p /build
     export TMP=/build
 fi
+export PROVISION_LOG="$TMP/provisioning.log"
 
 if [ $(wget http://${PROVISIONER}:5557/v2/_catalog -O-) ] 2>/dev/null; then
     export REGISTRY_MIRROR="--registry-mirror=http://${PROVISIONER}:5557"
@@ -317,14 +322,16 @@ if [[ $param_parttype == 'efi' ]]; then
             chmod a+rw /dev/null /dev/zero && \
             mkdir -p /boot/efi && \
             mount ${BOOT_PARTITION} /boot/efi && \
-            echo \\\"deb http://archive.ubuntu.com/ubuntu ${param_ubuntuversion} main multiverse universe restricted\\\" >> /etc/apt/sources.list  && \
-            echo \\\"deb-src http://archive.ubuntu.com/ubuntu ${param_ubuntuversion} main multiverse universe restricted\\\" >> /etc/apt/sources.list  && \
-            echo \\\"deb http://archive.ubuntu.com/ubuntu ${param_ubuntuversion}-security main multiverse universe restricted\\\" >> /etc/apt/sources.list  && \
-            echo \\\"deb-src http://archive.ubuntu.com/ubuntu ${param_ubuntuversion}-security main multiverse universe restricted\\\" >> /etc/apt/sources.list  && \
+            echo \\\"deb ${param_mirror} ${param_ubuntuversion} main restricted\\\" >> /etc/apt/sources.list  && \
+            echo \\\"deb-src ${param_mirror} ${param_ubuntuversion} main restricted\\\" >> /etc/apt/sources.list  && \
+            echo \\\"deb ${UBUNTU_MIRROR} ${param_ubuntuversion} multiverse universe\\\" >> /etc/apt/sources.list  && \
+            echo \\\"deb-src ${UBUNTU_MIRROR} ${param_ubuntuversion} multiverse universe\\\" >> /etc/apt/sources.list  && \
+            echo \\\"deb ${UBUNTU_MIRROR} ${param_ubuntuversion}-security main multiverse universe restricted\\\" >> /etc/apt/sources.list  && \
+            echo \\\"deb-src ${UBUNTU_MIRROR} ${param_ubuntuversion}-security main multiverse universe restricted\\\" >> /etc/apt/sources.list  && \
             apt update && \
             apt install -y wget linux-image-generic && \
             apt install -y grub-efi shim && \
-            \\\$(grub-install ${BOOT_PARTITION} --target=x86_64-efi --efi-directory=/boot/efi --bootloader=ubuntu; exit 0) && \
+            \\\$(grub-install ${BOOT_PARTITION} --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --no-nvram; exit 0) && \
             update-grub && \
             adduser --quiet --disabled-password --shell /bin/bash --gecos \\\"\\\" ${param_username} && \
             addgroup --system admin && \
@@ -336,11 +343,13 @@ if [[ $param_parttype == 'efi' ]]; then
             fi && \
             if [ \\\"${ubuntu_packages}\\\" != "" ]; then apt install -y ${ubuntu_packages}; fi && \
             apt clean\"' && \
-        wget --header \"Authorization: token ${param_token}\" -O - ${param_basebranch}/files/etc/fstab | sed -e \"s#ROOT#UUID=${rootfs_partuuid}#g\" | sed -e \"s#BOOT#UUID=${bootfs_partuuid}#g\" | sed -e \"s#SWAP#UUID=${swapfs_partuuid}#g\" > $ROOTFS/etc/fstab" \
+        wget --header \"Authorization: token ${param_token}\" -O - ${param_basebranch}/files/etc/fstab | sed -e \"s#ROOT#UUID=${rootfs_partuuid}#g\" | sed -e \"s#BOOT#UUID=${bootfs_partuuid}                 /boot/efi       vfat    umask=0077        0       1#g\" | sed -e \"s#SWAP#UUID=${swapfs_partuuid}#g\" > $ROOTFS/etc/fstab" \
         "$TMP/provisioning.log"
 
-        #   && \
-        # echo \"${EFI_PARTITION}  /boot/efi       vfat    umask=0077      0       1\" >> $ROOTFS/etc/fstab
+    EFI_BOOT_NAME="Ubuntu OS"
+    run "EFI Boot Manager" \
+        "efibootmgr -c -d ${DRIVE} -p 1 -L \"${EFI_BOOT_NAME}\" -l '\\EFI\\ubuntu\\grubx64.efi'" \
+        "$TMP/provisioning.log"
 
     export MOUNT_DURING_INSTALL="chmod a+rw /dev/null /dev/zero && mount ${BOOT_PARTITION} /boot/efi"
 else
@@ -357,10 +366,12 @@ else
             export DEBIAN_FRONTEND=noninteractive && \
             chmod a+rw /dev/null /dev/zero && \
             mount ${BOOT_PARTITION} /boot && \
-            echo \\\"deb http://archive.ubuntu.com/ubuntu ${param_ubuntuversion} main multiverse universe restricted\\\" >> /etc/apt/sources.list  && \
-            echo \\\"deb-src http://archive.ubuntu.com/ubuntu ${param_ubuntuversion} main multiverse universe restricted\\\" >> /etc/apt/sources.list  && \
-            echo \\\"deb http://archive.ubuntu.com/ubuntu ${param_ubuntuversion}-security main multiverse universe restricted\\\" >> /etc/apt/sources.list  && \
-            echo \\\"deb-src http://archive.ubuntu.com/ubuntu ${param_ubuntuversion}-security main multiverse universe restricted\\\" >> /etc/apt/sources.list  && \
+            echo \\\"deb ${param_mirror} ${param_ubuntuversion} main restricted\\\" >> /etc/apt/sources.list  && \
+            echo \\\"deb-src ${param_mirror} ${param_ubuntuversion} main restricted\\\" >> /etc/apt/sources.list  && \
+            echo \\\"deb ${UBUNTU_MIRROR} ${param_ubuntuversion} multiverse universe\\\" >> /etc/apt/sources.list  && \
+            echo \\\"deb-src ${UBUNTU_MIRROR} ${param_ubuntuversion} multiverse universe\\\" >> /etc/apt/sources.list  && \
+            echo \\\"deb ${UBUNTU_MIRROR} ${param_ubuntuversion}-security main multiverse universe restricted\\\" >> /etc/apt/sources.list  && \
+            echo \\\"deb-src ${UBUNTU_MIRROR} ${param_ubuntuversion}-security main multiverse universe restricted\\\" >> /etc/apt/sources.list  && \
             apt update && \
             apt install -y wget linux-image-generic && \
             apt install -y grub-pc && \
@@ -375,7 +386,7 @@ else
             fi && \
             if [ \\\"${ubuntu_packages}\\\" != "" ]; then apt install -y ${ubuntu_packages}; fi && \
             apt clean\"' && \
-        wget --header \"Authorization: token ${param_token}\" -O - ${param_basebranch}/files/etc/fstab | sed -e \"s#ROOT#UUID=${rootfs_partuuid}#g\" | sed -e \"s#BOOT#UUID=${bootfs_partuuid}#g\" | sed -e \"s#SWAP#UUID=${swapfs_partuuid}#g\" > $ROOTFS/etc/fstab" \
+        wget --header \"Authorization: token ${param_token}\" -O - ${param_basebranch}/files/etc/fstab | sed -e \"s#ROOT#UUID=${rootfs_partuuid}#g\" | sed -e \"s#BOOT#UUID=${bootfs_partuuid}                 /boot           ext4    defaults        0       2#g\" | sed -e \"s#SWAP#UUID=${swapfs_partuuid}#g\" > $ROOTFS/etc/fstab" \
         "$TMP/provisioning.log"
 
     export MOUNT_DURING_INSTALL="chmod a+rw /dev/null /dev/zero && mount ${BOOT_PARTITION} /boot"
@@ -452,44 +463,3 @@ if [ ! -z "${param_proxysocks}" ]; then
         FTP_PROXY=${param_proxysocks}' >> $ROOTFS/etc/environment" \
         "$TMP/provisioning.log"
 fi
-
-# --- Install Extra Packages ---
-# run "Installing Docker on Ubuntu ${param_ubuntuversion}" \
-#     "docker run -i --rm --privileged --name ubuntu-installer ${DOCKER_PROXY_ENV} -v /dev:/dev -v /sys/:/sys/ -v $ROOTFS:/target/root ubuntu:${param_ubuntuversion} sh -c \
-#     'mount --bind dev /target/root/dev && \
-#     mount -t proc proc /target/root/proc && \
-#     mount -t sysfs sysfs /target/root/sys && \
-#     LANG=C.UTF-8 chroot /target/root sh -c \
-#         \"$(echo ${INLINE_PROXY} | sed "s#'#\\\\\"#g") export TERM=xterm-color && \
-#         export DEBIAN_FRONTEND=noninteractive && \
-#         ${MOUNT_DURING_INSTALL} && \
-#         apt install -y \
-#         apt-transport-https \
-#         ca-certificates \
-#         curl \
-#         gnupg-agent \
-#         software-properties-common && \
-#         curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add - && \
-#         apt-key fingerprint 0EBFCD88 && \
-#         sudo add-apt-repository \\\"deb [arch=amd64] https://download.docker.com/linux/ubuntu ${DOCKER_UBUNTU_RELEASE} stable\\\" && \
-#         apt-get update && \
-#         apt-get install -y docker-ce docker-ce-cli containerd.io\"'" \
-#     "$TMP/provisioning.log"
-
-# if [ ! -z "${param_insecurereg}" ]; then
-#     mkdir -p $ROOTFS/etc/docker &&
-#     echo "{\"insecure-registries\": [\"${param_insecurereg}\"]}" >$ROOTFS/etc/docker/daemon.json
-# fi
-
-# # --- Create system-docker database on $ROOTFS ---
-# run "Preparing system-docker database" \
-#     "mkdir -p $ROOTFS/var/lib/docker && \
-#     docker run -d --privileged --name system-docker ${DOCKER_PROXY_ENV} -v $ROOTFS/var/lib/docker:/var/lib/docker docker:stable-dind ${REGISTRY_MIRROR}" \
-#     "$TMP/provisioning.log"
-
-# # --- Installing docker compose ---
-# run "Installing Docker Compose" \
-#     "mkdir -p $ROOTFS/usr/local/bin/ && \
-#     wget -O $ROOTFS/usr/local/bin/docker-compose \"https://github.com/docker/compose/releases/download/1.25.4/docker-compose-$(uname -s)-$(uname -m)\" && \
-#     chmod a+x $ROOTFS/usr/local/bin/docker-compose" \
-#     "$TMP/provisioning.log"
