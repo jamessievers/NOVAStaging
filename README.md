@@ -1,3 +1,3 @@
 # TempWatch Intel RNI Profile
-## ubuntu1804-onlogic
-This profile is currently utilized with our production 10.1.250.250 RNI Server to build Ubuntu 18.04 OnLogic units that are used with our TempWatch Access Product
+## ubuntu1604-onlogic
+This profile is currently utilized with our debug 10.0.1.210 RNI Server to build Ubuntu 16.04 OnLogic units that are used with our NOVA Product
